@@ -1,0 +1,207 @@
+---
+title: 'P&S-2022: Lab assignment 3'
+author: "Pavlo Kryven, Fedir Zhurba, Ivan Nikolaichenko"
+output:
+  html_document:
+    df_print: paged
+editor_options: 
+  markdown: 
+    wrap: 80
+---
+
+# Part 1
+
+# Markov chain
+
+```{r}
+TLN <- 21
+set.seed(001)
+SAMPLE_SIZE <- 1000
+```
+
+## Problem 1
+
+### Estimate $\hat p$ that a random digit sequence of length $n = 100, 200, 1000$ contains the $TLN$
+
+```{r}
+generate_seq <- function(n){
+  seq <- sample(0:9, n, replace = T)
+  return (seq)
+}
+simulate_prob <- function(iters, n){
+  prob_hat <- 0
+  for(i in 1:iters){
+    seq <- generate_seq(n)
+    for (el in 1:(n-2)){
+      if (seq[el] == 0 & seq[el+1]*10+seq[el+2] == TLN){
+        prob_hat <- prob_hat + 1
+        break
+      } 
+    }
+  }
+  return (prob_hat/(iters))
+}
+simulation_small <- simulate_prob(1000, 100)
+simulation_medium <- simulate_prob(1000, 200)
+simulation_large <- simulate_prob(1000, 1000)
+simulation_very_large <- simulate_prob(1000, 10000)
+print("For n = 100: ")
+print(simulation_small)
+print("For n = 200: ")
+print(simulation_medium)
+print("For n = 1000: ")
+print(simulation_large)
+print("For n = 10000: ")
+print(simulation_very_large)
+
+```
+
+### Identify the Markov chain structure
+
+So obviously we have 4 states corresponding to number of digits that matches in
+our TLN. The transition probabilities matrix for our chain will look like this:
+$$
+    T :=
+    \begin{pmatrix}
+        0.9 & 0.1 & 0 & 0 \\
+        0.8 & 0.1 & 0.1 & 0 \\
+        0.8 & 0.1 & 0 & 0.1 \\
+        0 & 0 & 0 & 1\\
+    \end{pmatrix}
+$$ It's based on the probability to get certain digit(we consider next digit
+have uniform distribution). After that, we can solve corresponding system of
+equations for limiting probabilities: $$
+\begin{equation}
+    \begin{cases}
+      \pi_0 = 0.9*\pi_0+0.1*\pi_1\\
+      \pi_1 = 0.8*\pi_0+0.1*\pi_1+0.1*\pi_2\\
+      \pi_2 = 0.8*\pi_0+0.1*\pi_1+0.1*\pi_3\\
+      \pi_3 = 0.9*\pi_0+0.1*\pi_1\\
+      \pi_0 +\pi_1+\pi_2+\pi_3 = 1\\
+    \end{cases}\,
+\end{equation}
+$$ From this system we get that $\pi_0 =\pi_1=\pi_2=0$ $\pi_3 = 1$. Indeed, this
+is a logical result, as we have non-zero probability to go in $S_3$ and $S_3$ is
+an absorbing state. So the limiting probability for this state is 1. This
+theoretical probability is followed by our simulated $\hat p$, because as we can
+see, with n becoming larger and larger, our estimated probability approaches 1.
+
+### Determine approximately the sample size $N$ which guarantees the absolute error \|$\hat p_n$ − $p_n$\| of the estimate $\hat p_n$ is below 0.03 with confidence level of at least 95 percent
+
+Using CLT, we can use our normal distribution of $\mu_{M_n}$ to calculate
+Z-scores of sampling distribution. From there we will estimate confidence
+intervals for true value of $\mu$, and other information. $$
+P(|\hat p - p^*|\le\epsilon)\ge0.95 =>
+P(|\hat p - \mu|\le\epsilon)\ge0.95 =>
+P(|\hat p - \mu_{S_n}|\le\epsilon)\ge0.95
+$$
+
+The unbiased estimator of the probability that a random digit sequence of length
+n contains the TLN is the proportion of sequences that contain the TLN.
+
+$$ {p_n} = \frac{1}{N} \sum_{i=1}^N I(d_i \ldots d_n \text{ contains TLN}) $$
+
+The variance of the estimator is:
+
+$$ \text{SE}({p_n}) = \frac{s}{\sqrt{N}} $$
+
+Confidence interval for the probability $p_n$ is defined as:
+
+$$ 1 - \alpha = P(p_n \in \hat{p_n} \pm z_{\alpha/2} \sqrt{\frac{SE}{N}}) $$
+
+```{r}
+generate_n_probs <- function(iters, n, size){
+  sampling_distr <- replicate(size, 0)
+  for (i in 1:size){
+    sampling_distr[i] <- simulate_prob(iters, n)
+  }
+  sampling_distr
+}
+SAMPLE_SIZE <- 1000
+PROBS_SAMPLES <- 100
+probs_distr <- generate_n_probs(100, SAMPLE_SIZE, PROBS_SAMPLES)
+print("Distribution of probabilities: ")
+print(probs_distr)
+probs_mean <- mean(probs_distr)
+print("Estimated probability(mean of simulations)")
+print(probs_mean)
+
+probs_std_dev <- sqrt(sum((probs_distr - probs_mean)^2)/(PROBS_SAMPLES-1))
+probs_std_error <- probs_std_dev/sqrt(SAMPLE_SIZE)
+print(probs_std_error)
+
+z <- qnorm(1 - 0.05/ 2)
+N <- ceiling(probs_mean * (1 - probs_mean) / (z^2 * 0.03^2))
+print(N)
+print("Confidence interval:")
+print(c(probs_mean-z*probs_std_error, probs_mean+z*probs_std_error))
+```
+
+## Problem 2
+
+### Make necessary amendments to the transition probabilities matrix P above and solve the corresponding system to find the expected time E(T) till absorption.
+
+We can solve corresponding system of equations for expectation: $$
+\begin{equation}
+    \begin{cases}
+      \mu_0 = 1+ 0.9*\mu_0+0.1*\mu_1\\
+      \mu_1 = 1+ 0.8*\mu_0+0.1*\mu_1+0.1*\mu_2\\
+      \mu_2 = 1+ 0.8*\mu_0+0.1*\mu_1+0.1*\mu_3\\
+      \mu_3 = 0\\
+    \end{cases}\,
+\end{equation}
+$$ We find that $\mu_0 = 1000$, $\mu_1 = 990$, $\mu_2 = 900$ \### Estimate
+numerically the expected length E(T) till the first occurrence of the TLN by
+running a sufficiently large number N of experiments.
+
+```{r}
+simulate_runs <- function(iters, n){
+  expected_time <- 0
+  for (i in 1:iters){
+    seq <- generate_seq(n)
+    time<- 3
+    for (el in 1:(n-2)){
+      
+      if (seq[el] == 0 & seq[el+1]*10+seq[el+2] == TLN){
+        expected_time = expected_time + time
+        break
+      } 
+      else{
+        time = time + 1
+      }
+    }
+  }
+   return (expected_time/iters)
+}
+runs_predicted <- simulate_runs(2000, 10000)
+print("Estimator for E(T) is mean value amongst 1000 simulations")
+print("Predicted expected time untill first TLN(021) occurance(mu_0):")
+print(runs_predicted)
+
+```
+
+### Find the sample size N which guarantees that the absolute error $|\hat \theta - \theta|$ of the estimate does not exceed 10 with confidence level of at least 95 percent.
+
+```{r}
+PROBS_SAMPLES <- 100
+generate_runs_distr <- function(iters, n, size){
+  sampling_distr <- replicate(size, 0)
+  for (i in 1:size){
+    sampling_distr[i] <- simulate_runs(iters, n)
+  }
+  sampling_distr
+}
+
+runs_distr <- generate_runs_distr(300, 5000, PROBS_SAMPLES)
+runs_std_dev <- sqrt(sum((runs_distr - 1000)^2)/(PROBS_SAMPLES-1))
+runs_std_error <- runs_std_dev/sqrt(runs_predicted)
+runs_var <- runs_std_error^2
+print("Variance of runs length:")
+print(runs_var)
+```
+
+L - length of run until TLN $P(|L - E(L)|\ge k)\le \frac{Var(L)}{10^2}$ by
+Chebyshev's inequality $P(|L - E(L)|\le 10)\ge 1-\frac{Var(L)}{10^2}$ From here
+we know that $\frac{Var(L)}{10^2} \le 0.05$ to satisfy the probability of at
+least 95%. $Var(L)\le 5$ As we have that for N = 100\*300 (PROBS_SAMPLES times
+iters) $Var(L)\approx 5$ that means that our searched $N \approx 30000$
